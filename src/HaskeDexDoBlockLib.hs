@@ -1,11 +1,14 @@
 module HaskeDexDoBlockLib where
 
-import qualified Control.Exception as Exception
 import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
-import qualified System.Environment as Env
+import FileInfoLib (printFileInfo)
+import HandleArgsLib
+  ( determineHaskeDexFeature,
+    handleArgsDoBlock,
+    withErrorHandling,
+  )
 import System.IO (BufferMode (NoBuffering), hSetBuffering, hSetEcho, stdin)
-import qualified System.IO.Error as IOError (userError)
 import qualified System.Info as SystemInfo
 import qualified System.Process as Process (readProcess)
 
@@ -37,24 +40,11 @@ getTerminalSizeDoBlock =
             screenColumns = read $ init cols_
           }
 
-handleArgsDoBlock :: IO (Either String FilePath)
-handleArgsDoBlock = do
-  parseArgs <$> Env.getArgs
-  where
-    parseArgs argumentList =
-      case argumentList of
-        [fname] -> checkString fname
-        [] -> Left "no filename provided"
-        _default -> Left "multiple files not supported"
-    checkString string =
-      case string of
-        [] -> Left "provided an empty string"
-        validString -> Right validString
-
 wordWrap :: Int -> Text.Text -> [Text.Text]
-wordWrap lineLength lineText
-  | Text.length lineText <= lineLength = [lineText]
-  | otherwise =
+wordWrap lineLength lineText =
+  if Text.length lineText <= lineLength
+    then [lineText]
+    else
       let (candidate, nextLines) = Text.splitAt lineLength lineText
           (firstLine, overflow) = softWrap candidate (Text.length candidate - 1)
        in firstLine : wordWrap lineLength (overflow <> nextLines)
@@ -110,21 +100,12 @@ getContinueDoBlock = do
 runHaskeDexDoBlock :: IO ()
 runHaskeDexDoBlock = do
   args <- handleArgsDoBlock
-  targetFilePath <- eitherToError args
-  contents <- TextIO.readFile targetFilePath
-  termSize <- getTerminalSizeDoBlock
-
-  let pages = paginate termSize contents
-
-  withErrorHandling $ showPagesDoBlock pages
-  where
-    withErrorHandling :: IO () -> IO ()
-    withErrorHandling ioAction = Exception.catch ioAction handleError
-    handleError :: IOError -> IO ()
-    handleError e =
-      TextIO.putStrLn (Text.pack "I ran into an error:") >> print e
-    eitherToError :: (Show a) => Either a b -> IO b
-    eitherToError eToE =
-      case eToE of
-        (Right a) -> return a
-        (Left e) -> Exception.throwIO . IOError.userError $ show e
+  targetFilePathWithFeature <- determineHaskeDexFeature args
+  case targetFilePathWithFeature of
+    (Left fPathLess) -> do
+      contents <- TextIO.readFile fPathLess
+      termSize <- getTerminalSizeDoBlock
+      let pages = paginate termSize contents
+      withErrorHandling $ showPagesDoBlock pages
+    (Right fPathInfo) -> do
+      printFileInfo fPathInfo

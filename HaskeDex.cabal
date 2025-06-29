@@ -16,7 +16,9 @@ common warnings
 
 library
     import:           warnings
-    exposed-modules:  HaskeDexDoBlockLib
+    exposed-modules:  HaskeDexDoBlockLib,
+                      HandleArgsLib,
+                      FileInfoLib
     build-depends:    base ^>=4.18.3.0,
                       bytestring,
                       text,
